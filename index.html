@@ -50,6 +50,7 @@
   .qt td.qx { max-width: 420px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #4A4A45; }
   .qt td.pts { width: 44px; text-align: right; font-weight: 700; }
   .qt td.ans { white-space: nowrap; color: #1F7A3F; font-weight: 600; }
+  .qt .gu { white-space: normal; margin-top: 3px; font-size: 12.5px; color: #8A5A00; }
   details.m summary { cursor: pointer; font-size: 13px; color: #4A4A45; margin-top: 8px; }
   .tries span { display: inline-block; font-family: ui-monospace, Menlo, monospace; font-size: 12px; padding: 1px 6px; border-radius: 5px; margin: 1px 4px 1px 0; background: #FEF3F2; color: #B42318; }
   .tries span.r { background: #E8F5EC; color: #1F7A3F; }
@@ -218,7 +219,8 @@
       const tries = data.attempts.filter(a => a.student === s.student && a.lesson === l.checker && a.question === q.id);
       const mine = own.find(o => o.id === q.id) || {};
       const text = mine.text || q.text;
-      return `<tr><td class="qn">${i + 1}</td><td class="qx" title="${esc(text)}">${esc(text)}</td>
+      const gu = (data.giveups || []).find(g => g.student === s.student && g.lesson === l.checker && g.question === q.id);
+      return `<tr><td class="qn">${i + 1}</td><td class="qx" title="${esc(text)}">${esc(text)}${gu ? `<div class="gu"><b>Gave up</b> · ${esc(gu.text)}</div>` : ''}</td>
         <td class="ans" title="Right answer for this student">${mine.answer ? esc(mine.answer) : ''}</td>
         <td class="tries">${tries.map(t => `<span class="${t.is_right ? 'r' : ''}">${esc(t.answer)}</span>`).join('') || '<span class="muted" style="background:none;color:#8A8A85">not tried</span>'}</td>
         <td class="pts">${tries.length ? scoreQuestion(tries) : 0}</td></tr>`;
