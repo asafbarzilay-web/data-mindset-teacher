@@ -49,6 +49,7 @@
   .qt td.qn { width: 28px; color: #8A8A85; font-weight: 700; }
   .qt td.qx { max-width: 420px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #4A4A45; }
   .qt td.pts { width: 44px; text-align: right; font-weight: 700; }
+  .qt td.ans { white-space: nowrap; color: #1F7A3F; font-weight: 600; }
   details.m summary { cursor: pointer; font-size: 13px; color: #4A4A45; margin-top: 8px; }
   .tries span { display: inline-block; font-family: ui-monospace, Menlo, monospace; font-size: 12px; padding: 1px 6px; border-radius: 5px; margin: 1px 4px 1px 0; background: #FEF3F2; color: #B42318; }
   .tries span.r { background: #E8F5EC; color: #1F7A3F; }
@@ -140,10 +141,31 @@
 
   async function loadCourse() {
     lessons = await fetch(SITE + 'units/lessons.json', { cache: 'no-store' }).then(r => r.json());
+    // The questions are the same for every student (only the numbers in them differ), so any name will do for the list.
     for (const l of lessons.filter(l => l.checker)) {
-      questions[l.checker] = await fetch(SITE + `checker/questions/${l.checker}.json`, { cache: 'no-store' })
-        .then(r => r.ok ? r.json() : { questions: [] }).then(j => j.questions).catch(() => []);
+      questions[l.checker] = await server({ action: 'questions', student: 'course/list', lesson: l.checker })
+        .then(j => j.questions).catch(() => []);
     }
+  }
+  // The course server: every student has their own data, so their own right answers.
+  const COURSE_FN = COURSE_URL + '/functions/v1/course';
+  async function server(body) {
+    const { data: { session } } = await db.auth.getSession();
+    const res = await fetch(COURSE_FN, { method: 'POST', body: JSON.stringify(body), headers: {
+      'Content-Type': 'application/json', apikey: COURSE_KEY, ...(session ? { Authorization: 'Bearer ' + session.access_token } : {}) } });
+    const j = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(j.error || 'the course server did not answer');
+    return j;
+  }
+  // This student's own questions and right answers, fetched when their row opens.
+  const answers = {};
+  function answersFor(student, lesson) {
+    const k = student + '|' + lesson;
+    if (!(k in answers)) {
+      answers[k] = null;
+      server({ action: 'answers', student, lesson }).then(j => { answers[k] = j.questions; render(); }).catch(() => { answers[k] = []; });
+    }
+    return answers[k] || [];
   }
 
 
@@ -191,9 +213,13 @@
     const qs = questions[l.checker] || [], m = memoOf(s.student, l), sc = lessonScore(s.student, l);
     const pick = ls.map(x => `<button data-pick="${esc(x.checker)}" data-who="${esc(s.student)}" class="${x === l ? 'on' : ''}">L${x.n} · ${status(s, x).label}</button>`).join('');
     const st = status(s, l);
+    const own = DEMO ? [] : answersFor(s.student, l.checker);
     const rows = qs.map((q, i) => {
       const tries = data.attempts.filter(a => a.student === s.student && a.lesson === l.checker && a.question === q.id);
-      return `<tr><td class="qn">${i + 1}</td><td class="qx" title="${esc(q.text)}">${esc(q.text)}</td>
+      const mine = own.find(o => o.id === q.id) || {};
+      const text = mine.text || q.text;
+      return `<tr><td class="qn">${i + 1}</td><td class="qx" title="${esc(text)}">${esc(text)}</td>
+        <td class="ans" title="Right answer for this student">${mine.answer ? esc(mine.answer) : ''}</td>
         <td class="tries">${tries.map(t => `<span class="${t.is_right ? 'r' : ''}">${esc(t.answer)}</span>`).join('') || '<span class="muted" style="background:none;color:#8A8A85">not tried</span>'}</td>
         <td class="pts">${tries.length ? scoreQuestion(tries) : 0}</td></tr>`;
     }).join('');
