@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Teacher Dashboard</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<!-- The lecturer's view of every student: setup, lesson, checker tries, scores, memos.
+     Reads the course database (teacher/course.sql); only emails in course.teachers can read it. -->
+<style>
+  * { box-sizing: border-box; }
+  body { margin: 0; background: #F4F4F2; color: #1C1C1A; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; }
+  [hidden] { display: none !important; }
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 24px 16px 64px; }
+  header { display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap; margin-bottom: 18px; }
+  h1 { font-size: 24px; margin: 0; }
+  h2 { font-size: 18px; margin: 0 0 4px; }
+  .muted { color: #6B6B66; font-size: 13px; line-height: 1.5; }
+  .card { background: #fff; border: 1px solid #E2E2DE; border-radius: 12px; padding: 16px 20px; margin-bottom: 16px; }
+  button, select { font: inherit; font-size: 13.5px; border-radius: 8px; padding: 6px 10px; border: 1px solid #CFCFCA; background: #fff; color: #1C1C1A; cursor: pointer; }
+  button.primary { background: #1C1C1A; color: #fff; border-color: #1C1C1A; }
+  .linkish { background: none; border: none; color: #6B6B66; text-decoration: underline; padding: 0; }
+  input { font: inherit; font-size: 15px; padding: 10px 12px; border: 1px solid #CFCFCA; border-radius: 8px; width: 100%; }
+  .login { max-width: 360px; margin: 12vh auto 0; }
+  .login label { display: block; font-size: 13px; color: #6B6B66; margin: 14px 0 6px; }
+  .login button { margin-top: 18px; width: 100%; padding: 10px; }
+  .row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .bad { color: #B42318; } .ok { color: #1F7A3F; }
+  table { border-collapse: collapse; width: 100%; font-size: 13.5px; }
+  th, td { text-align: left; padding: 9px 10px; border-bottom: 1px solid #EEEEEA; vertical-align: middle; }
+  th { color: #6B6B66; font-weight: 600; font-size: 12.5px; background: #FAFAF8; white-space: nowrap; }
+  td .row { flex-wrap: nowrap; }
+  select[data-move] { max-width: 170px; }
+  tr.st { cursor: pointer; } tr.st:hover td { background: #FAFAF8; }
+  tr.st.open td { background: #FEF7F2; }
+  .chip { display: inline-block; font-size: 12px; font-weight: 600; padding: 2px 8px; border-radius: 999px; margin: 1px 3px 1px 0; background: #F0F0EC; color: #4A4A45; white-space: nowrap; }
+  .chip.done { background: #E8F5EC; color: #1F7A3F; } .chip.part, .chip.wip { background: #FEF3C7; color: #92400E; }
+  .chip.late { background: #FEE4E2; color: #B42318; } .chip.none { background: #F0F0EC; color: #8A8A85; }
+  .scroll { overflow-x: auto; }
+  .detail td { background: #FCFCFA; padding: 14px 18px 18px; }
+  .pick { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin-bottom: 10px; }
+  .pick button { font-size: 12.5px; padding: 4px 10px; border-radius: 999px; }
+  .pick button.on { background: #1C1C1A; color: #fff; border-color: #1C1C1A; }
+  .lesson-block { border: 1px solid #EEEEEA; border-radius: 10px; padding: 10px 14px; background: #fff; }
+  .lesson-block h3 { font-size: 14.5px; margin: 0 0 6px; }
+  .qt { width: 100%; font-size: 13px; }
+  .qt td { padding: 4px 8px; border-bottom: 1px solid #F2F2EE; vertical-align: top; }
+  .qt td.qn { width: 28px; color: #8A8A85; font-weight: 700; }
+  .qt td.qx { max-width: 420px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #4A4A45; }
+  .qt td.pts { width: 44px; text-align: right; font-weight: 700; }
+  details.m summary { cursor: pointer; font-size: 13px; color: #4A4A45; margin-top: 8px; }
+  .tries span { display: inline-block; font-family: ui-monospace, Menlo, monospace; font-size: 12px; padding: 1px 6px; border-radius: 5px; margin: 1px 4px 1px 0; background: #FEF3F2; color: #B42318; }
+  .tries span.r { background: #E8F5EC; color: #1F7A3F; }
+  .memo { white-space: pre-wrap; font-size: 14px; line-height: 1.55; background: #FAFAF8; border-radius: 8px; padding: 10px 12px; margin-top: 8px; }
+</style>
+</head>
+<body>
+<div class="wrap login" id="login" hidden>
+  <h1>Teacher sign-in</h1>
+  <p class="muted">Your account in the course's Supabase project.</p>
+  <form id="login-form">
+    <label for="email">Email</label><input id="email" type="email" required autocomplete="username">
+    <label for="password">Password</label><input id="password" type="password" required autocomplete="current-password">
+    <button class="primary" type="submit">Sign in</button>
+    <p class="bad" id="login-error"></p>
+  </form>
+</div>
+
+<div class="wrap" id="app" hidden>
+  <header>
+    <h1>Teacher dashboard</h1>
+    <div class="row"><button id="refresh">Refresh</button><button class="linkish" id="signout">Sign out</button></div>
+  </header>
+
+  <section class="card">
+    <h2>Lesson open for everyone</h2>
+    <div class="row" style="margin-top:8px">
+      <select id="all-lesson"></select><button class="primary" id="open-all">Open for everyone</button>
+      <span class="muted" id="all-since"></span>
+    </div>
+    <p class="muted" style="margin-top:8px">Students you moved yourself keep their own lesson until you set them back to "follow the course".</p>
+  </section>
+
+  <section class="card">
+    <h2>Students</h2>
+    <p class="muted" id="count"></p>
+    <p class="muted"><span class="chip done">Submitted ✓</span> memo in, every answer right · <span class="chip wip">In progress</span> working on it ·
+      <span class="chip late">Not finished</span> moved past it without submitting · <span class="chip none">Not started</span></p>
+    <div class="scroll"><table id="students"></table></div>
+  </section>
+</div>
+
+<script>
+  const COURSE_URL = 'https://vabrgxtwobrhmzcmwzer.supabase.co';
+  const COURSE_KEY = 'sb_publishable_ZQhnI36Hc-V9Vhb4ch59ZQ_hE1P-5zc';
+  const SITE = 'https://asafbarzilay-web.github.io/data-mindset-template/';   // the public course: lessons and questions
+  const db = window.supabase.createClient(COURSE_URL, COURSE_KEY, { auth: { storageKey: 'teacher' } });
+  const $ = id => document.getElementById(id);
+  const esc = v => String(v ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  let lessons = [], questions = {}, data = null, openStudent = null;
+
+  // Score per question: right on try 1 = 100, 2 = 75, 3 = 50, 4 or later = 25, never right = 0.
+  const POINTS = [100, 75, 50, 25];
+  function scoreQuestion(tries) {
+    const i = tries.findIndex(t => t.is_right);
+    return i < 0 ? 0 : POINTS[Math.min(i, 3)];
+  }
+  function lessonScore(student, l) {
+    const qs = questions[l.checker] || [];
+    if (!qs.length) return null;
+    const mine = data.attempts.filter(a => a.student === student && a.lesson === l.checker);
+    if (!mine.length) return null;
+    return Math.round(qs.reduce((sum, q) => sum + scoreQuestion(mine.filter(a => a.question === q.id)), 0) / qs.length);
+  }
+  // Lessons to show for a student: everything up to their current lesson, plus any lesson they have work in.
+  const hasWork = (student, l) => data.attempts.some(a => a.student === student && a.lesson === l.checker) || !!memoOf(student, l);
+  const shownLessons = (s) => { const n = nOf(lessonOf(s)); return lessons.filter(l => l.checker && (l.n <= n || hasWork(s.student, l))); };
+  const memoOf = (student, l) => data.memos.find(m => m.student === student && m.lesson === l.checker);
+  // Where a lesson stands for a student: submitted (memo in, so every answer right), in progress,
+  // not finished (the student has moved past it), or not started.
+  function status(s, l) {
+    const m = memoOf(s.student, l);
+    if (m && m.submitted_at) return { key: 'done', label: 'Submitted' };
+    if (l.n < nOf(lessonOf(s))) return { key: 'late', label: 'Not finished' };
+    return hasWork(s.student, l) ? { key: 'wip', label: 'In progress' } : { key: 'none', label: 'Not started' };
+  }
+  const lessonOf = s => s.lesson || data.state.lesson;
+  const sinceOf = s => s.lesson ? s.lesson_since : data.state.since;
+  const nOf = unit => (lessons.find(l => l.unit === unit) || {}).n;
+  function ago(t) {
+    if (!t) return '–';
+    const m = (Date.now() - new Date(t)) / 60000;
+    const days = Math.round(m / 1440);
+    return m < 60 ? Math.round(m) + ' min' : m < 1440 ? Math.round(m / 60) + ' h' : days + (days === 1 ? ' day' : ' days');
+  }
+  const options = (sel, withFollow) => (withFollow ? '<option value="">follow the course</option>' : '') +
+    lessons.filter(l => l.unit).map(l => `<option value="${l.unit}" ${l.unit === sel ? 'selected' : ''}>${l.n} · ${esc(l.title)}</option>`).join('');
+
+  async function loadCourse() {
+    lessons = await fetch(SITE + 'units/lessons.json', { cache: 'no-store' }).then(r => r.json());
+    for (const l of lessons.filter(l => l.checker)) {
+      questions[l.checker] = await fetch(SITE + `checker/questions/${l.checker}.json`, { cache: 'no-store' })
+        .then(r => r.ok ? r.json() : { questions: [] }).then(j => j.questions).catch(() => []);
+    }
+  }
+
+
+  const DEMO = false;   // the demo exists only in the private copy
+  const demoData = () => null;
+
+  async function load() {
+    if (DEMO) { data = data || demoData(); render(); return; }
+    const { data: d, error } = await db.rpc('course_overview');
+    if (error) { $('count').innerHTML = `<span class="bad">${esc(error.message)}</span>`; return; }
+    data = d; render();
+  }
+
+  function render() {
+    $('all-lesson').innerHTML = options(data.state.lesson, false);
+    $('all-since').textContent = `open since ${new Date(data.state.since).toLocaleDateString()} (${ago(data.state.since)})`;
+    $('count').textContent = `${data.students.length} student${data.students.length === 1 ? '' : 's'} set up. Click a student for their answers and memos.`;
+    $('students').innerHTML = `<thead><tr><th>Student</th><th>Set up</th><th>Lesson now</th><th>Lesson open for</th><th>Move to</th><th>Scores and memos</th><th>Last seen</th></tr></thead><tbody>${
+      data.students.map(s => {
+        const cur = lessonOf(s), n = nOf(cur);
+        const chips = shownLessons(s).map(l => {
+          const sc = lessonScore(s.student, l), st = status(s, l);
+          return `<span class="chip ${st.key}" title="${esc(l.title)}: ${st.label}">L${l.n}: ${sc === null ? '–' : sc}${st.key === 'done' ? ' ✓' : ''}</span>`;
+        }).join('');
+        return `<tr class="st ${openStudent === s.student ? 'open' : ''}" data-s="${esc(s.student)}">
+          <td><b>${esc(s.name || s.student)}</b><div class="muted"><a href="${esc(s.site)}" target="_blank" onclick="event.stopPropagation()">${esc(s.student)}</a></div></td>
+          <td>${s.setup_at ? new Date(s.setup_at).toLocaleDateString() : '–'}</td>
+          <td>${n ?? '–'}${s.lesson ? ' <span class="muted">(moved)</span>' : ''}</td>
+          <td>${ago(sinceOf(s))}</td>
+          <td onclick="event.stopPropagation()"><div class="row"><select data-move="${esc(s.student)}">${options(s.lesson || '', true)}</select><button data-go="${esc(s.student)}">Move</button></div></td>
+          <td>${chips || '<span class="muted">–</span>'}</td>
+          <td>${ago(s.last_seen)}</td></tr>${openStudent === s.student ? detail(s) : ''}`;
+      }).join('')}</tbody>`;
+  }
+
+  // The open row shows one lesson: the one the student worked on last, unless the teacher picked another.
+  const picked = {};
+  const lastActivity = (student, l) => Math.max(0, ...data.attempts.filter(a => a.student === student && a.lesson === l.checker).map(a => +new Date(a.at)),
+    ...data.memos.filter(m => m.student === student && m.lesson === l.checker && m.submitted_at).map(m => +new Date(m.submitted_at)));
+  function detail(s) {
+    const ls = shownLessons(s);
+    if (!ls.length) return `<tr class="detail"><td colspan="7"><span class="muted">No graded lessons yet.</span></td></tr>`;
+    const latest = ls.reduce((a, b) => lastActivity(s.student, b) > lastActivity(s.student, a) ? b : a, ls[ls.length - 1]);
+    const l = ls.find(x => x.checker === picked[s.student]) || latest;
+    const qs = questions[l.checker] || [], m = memoOf(s.student, l), sc = lessonScore(s.student, l);
+    const pick = ls.map(x => `<button data-pick="${esc(x.checker)}" data-who="${esc(s.student)}" class="${x === l ? 'on' : ''}">L${x.n} · ${status(s, x).label}</button>`).join('');
+    const st = status(s, l);
+    const rows = qs.map((q, i) => {
+      const tries = data.attempts.filter(a => a.student === s.student && a.lesson === l.checker && a.question === q.id);
+      return `<tr><td class="qn">${i + 1}</td><td class="qx" title="${esc(q.text)}">${esc(q.text)}</td>
+        <td class="tries">${tries.map(t => `<span class="${t.is_right ? 'r' : ''}">${esc(t.answer)}</span>`).join('') || '<span class="muted" style="background:none;color:#8A8A85">not tried</span>'}</td>
+        <td class="pts">${tries.length ? scoreQuestion(tries) : 0}</td></tr>`;
+    }).join('');
+    const memo = m && m.text
+      ? `<details class="m" ${m.submitted_at ? '' : 'open'}><summary><b>Memo</b> · ${m.submitted_at ? 'submitted ' + new Date(m.submitted_at).toLocaleString() : 'withdrawn for editing'}</summary><div class="memo">${esc(m.text)}</div></details>`
+      : `<div class="muted" style="margin-top:8px"><b>Memo</b> · not sent</div>`;
+    return `<tr class="detail"><td colspan="7"><div class="pick">${pick}</div>
+      <div class="lesson-block"><h3>Lesson ${l.n} · ${esc(l.title)} · score ${sc ?? '–'} <span class="chip ${st.key}">${st.label}</span></h3><table class="qt">${rows}</table>${memo}</div></td></tr>`;
+  }
+
+  async function setLesson(student, lesson) {
+    if (DEMO) {
+      if (student === null) Object.assign(data.state, { lesson, since: new Date().toISOString() });
+      else Object.assign(data.students.find(s => s.student === student), { lesson, lesson_since: lesson ? new Date().toISOString() : null });
+      return render();
+    }
+    const { error } = await db.rpc('course_set_lesson', { p_student: student, p_lesson: lesson });
+    if (error) alert(error.message); else load();
+  }
+
+  $('students').addEventListener('click', (e) => {
+    const pk = e.target.closest('[data-pick]');
+    if (pk) { picked[pk.dataset.who] = pk.dataset.pick; render(); return; }
+    if (e.target.closest('tr.detail')) return;
+    const go = e.target.closest('[data-go]');
+    if (go) { const s = go.dataset.go; setLesson(s, document.querySelector(`select[data-move="${CSS.escape(s)}"]`).value || null); return; }
+    const tr = e.target.closest('tr.st'); if (!tr) return;
+    openStudent = openStudent === tr.dataset.s ? null : tr.dataset.s; render();
+  });
+  $('open-all').addEventListener('click', () => setLesson(null, $('all-lesson').value));
+  $('refresh').addEventListener('click', load);
+  $('login-form').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const { error } = await db.auth.signInWithPassword({ email: $('email').value, password: $('password').value });
+    $('login-error').textContent = error ? error.message : ''; show();
+  });
+  $('signout').addEventListener('click', async () => { await db.auth.signOut(); show(); });
+
+  async function show() {
+    if (DEMO) {
+      $('login').hidden = true; $('app').hidden = false;
+      document.querySelector('header h1').innerHTML = 'Teacher dashboard <span class="chip part">demo: made-up students</span>';
+      await loadCourse(); load(); return;
+    }
+    const { data: { session } } = await db.auth.getSession();
+    $('login').hidden = !!session; $('app').hidden = !session;
+    if (session) { if (!lessons.length) await loadCourse(); load(); }
+  }
+  show();
+</script>
+</body>
+</html>
