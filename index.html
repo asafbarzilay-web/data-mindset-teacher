@@ -26,6 +26,7 @@
   .login button { margin-top: 18px; width: 100%; padding: 10px; }
   .row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
   .bad { color: #B42318; } .ok { color: #1F7A3F; }
+  #note { margin: 0; font-size: 14px; font-weight: 600; padding: 8px 12px; border-radius: 8px; background: #fff; border: 1px solid #E2E2DE; }
   table { border-collapse: collapse; width: 100%; font-size: 13.5px; }
   th, td { text-align: left; padding: 9px 10px; border-bottom: 1px solid #EEEEEA; vertical-align: middle; }
   th { color: #6B6B66; font-weight: 600; font-size: 12.5px; background: #FAFAF8; white-space: nowrap; }
@@ -69,6 +70,7 @@
 <div class="wrap" id="app" hidden>
   <header>
     <h1>Teacher dashboard</h1>
+    <p id="note" hidden></p>
     <div class="row"><button id="refresh">Refresh</button><button class="linkish" id="signout">Sign out</button></div>
   </header>
 
@@ -171,7 +173,7 @@
           <td>${s.setup_at ? new Date(s.setup_at).toLocaleDateString() : '–'}</td>
           <td>${n ?? '–'}${s.lesson ? ' <span class="muted">(moved)</span>' : ''}</td>
           <td>${ago(sinceOf(s))}</td>
-          <td onclick="event.stopPropagation()"><div class="row"><select data-move="${esc(s.student)}">${options(s.lesson || '', true)}</select><button data-go="${esc(s.student)}">Move</button></div></td>
+          <td class="move"><div class="row"><select data-move="${esc(s.student)}">${options(s.lesson || '', true)}</select><button data-go="${esc(s.student)}">Move</button></div></td>
           <td>${chips || '<span class="muted">–</span>'}</td>
           <td>${ago(s.last_seen)}</td></tr>${openStudent === s.student ? detail(s) : ''}`;
       }).join('')}</tbody>`;
@@ -202,14 +204,25 @@
       <div class="lesson-block"><h3>Lesson ${l.n} · ${esc(l.title)} · score ${sc ?? '–'} <span class="chip ${st.key}">${st.label}</span></h3><table class="qt">${rows}</table>${memo}</div></td></tr>`;
   }
 
+  // A line under the heading confirms every change, or shows what went wrong.
+  function note(text, bad) {
+    const el = $('note'); el.textContent = text; el.className = bad ? 'bad' : 'ok'; el.hidden = false;
+    clearTimeout(note.t); note.t = setTimeout(() => { el.hidden = true; }, 8000);
+  }
+  const titleOf = unit => { const l = lessons.find(x => x.unit === unit); return l ? `lesson ${l.n} (${l.title})` : 'the course'; };
+  const nameOf = student => { const s = data.students.find(x => x.student === student); return s ? (s.name || s.student) : student; };
   async function setLesson(student, lesson) {
+    const said = student === null ? `Opened ${titleOf(lesson)} for everyone.`
+      : lesson ? `Moved ${nameOf(student)} to ${titleOf(lesson)}. Their site follows within seconds (they may need to reload).`
+      : `${nameOf(student)} now follows the course again.`;
     if (DEMO) {
       if (student === null) Object.assign(data.state, { lesson, since: new Date().toISOString() });
       else Object.assign(data.students.find(s => s.student === student), { lesson, lesson_since: lesson ? new Date().toISOString() : null });
-      return render();
+      render(); return note(said + ' (demo only)');
     }
     const { error } = await db.rpc('course_set_lesson', { p_student: student, p_lesson: lesson });
-    if (error) alert(error.message); else load();
+    if (error) return note('Could not change the lesson: ' + error.message, true);
+    await load(); note(said);
   }
 
   $('students').addEventListener('click', (e) => {
@@ -218,6 +231,7 @@
     if (e.target.closest('tr.detail')) return;
     const go = e.target.closest('[data-go]');
     if (go) { const s = go.dataset.go; setLesson(s, document.querySelector(`select[data-move="${CSS.escape(s)}"]`).value || null); return; }
+    if (e.target.closest('td.move')) return;   // the dropdown and button don't open the row
     const tr = e.target.closest('tr.st'); if (!tr) return;
     openStudent = openStudent === tr.dataset.s ? null : tr.dataset.s; render();
   });
