@@ -177,7 +177,19 @@
     if (DEMO) { data = data || demoData(); render(); return; }
     const { data: d, error } = await db.rpc('course_overview');
     if (error) { $('count').innerHTML = `<span class="bad">${esc(error.message)}</span>`; return; }
-    data = d; render();
+    data = d;
+    // A link from a "lesson done" email (?student=…&lesson=…) opens that student on that lesson, once.
+    const q = new URLSearchParams(location.search);
+    if (q.get('student') && !load.opened) {
+      load.opened = true;
+      openStudent = q.get('student');
+      if (q.get('lesson')) picked[openStudent] = q.get('lesson');
+      render();
+      const row = document.querySelector(`tr.st[data-s="${CSS.escape(openStudent)}"]`);
+      if (row) row.scrollIntoView({ block: 'center' });
+      return;
+    }
+    render();
   }
 
   function render() {
