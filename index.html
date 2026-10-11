@@ -50,6 +50,9 @@
   .qt td.qx { max-width: 420px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #4A4A45; }
   .qt td.pts { width: 44px; text-align: right; font-weight: 700; }
   .qt td.ans { white-space: nowrap; color: #1F7A3F; font-weight: 600; }
+  .qt .how-btn { display: block; margin-top: 4px; font-size: 12px; font-weight: 400; }
+  .qt tr.how td { white-space: normal; background: #F7F7F4; font-size: 13px; color: #33332F; padding-top: 6px; padding-bottom: 8px; }
+  .qt tr.how ol { margin: 0; padding-left: 20px; } .qt tr.how li { margin: 2px 0; }
   .qt .gu { white-space: normal; margin-top: 3px; font-size: 12.5px; color: #8A5A00; }
   details.m summary { cursor: pointer; font-size: 13px; color: #4A4A45; margin-top: 8px; }
   .tries { min-width: 260px; }
@@ -168,6 +171,22 @@
     if (!res.ok) throw new Error(j.error || 'the course server did not answer');
     return j;
   }
+  // How a right answer is reached, step by step with this student's numbers: fetched on a click.
+  const explained = {};
+  function howRow(k) {
+    const h = explained[k]; if (!h) return '';
+    const body = h === 'loading' ? '<span class="muted">Loading…</span>' : typeof h === 'string' ? `<span class="muted">${esc(h)}</span>`
+      : `<ol>${h.map(line => `<li>${esc(line)}</li>`).join('')}</ol>`;
+    return `<tr class="how"><td></td><td colspan="4">${body}</td></tr>`;
+  }
+  async function explain(k) {
+    if (explained[k]) { delete explained[k]; render(); return; }
+    const [student, lesson, question] = k.split('|');
+    explained[k] = 'loading'; render();
+    try { const j = await server({ action: 'explain', student, lesson, question }); explained[k] = j.how.length ? j.how : 'No explanation for this question yet.'; }
+    catch (e) { explained[k] = 'Could not load: ' + e.message; }
+    render();
+  }
   // This student's own questions and right answers, fetched when their row opens.
   const answers = {};
   function answersFor(student, lesson) {
@@ -243,9 +262,9 @@
       const text = mine.text || q.text;
       const gu = (data.giveups || []).find(g => g.student === s.student && g.lesson === l.checker && g.question === q.id);
       return `<tr><td class="qn">${i + 1}</td><td class="qx" title="${esc(text)}">${esc(text)}${gu ? `<div class="gu"><b>Gave up</b> · ${esc(gu.text)}</div>` : ''}</td>
-        <td class="ans" title="Right answer for this student">${mine.answer ? cellsOf(mine.answer) : ''}</td>
+        <td class="ans" title="Right answer for this student">${mine.answer ? cellsOf(mine.answer) + (DEMO ? '' : `<button class="linkish how-btn" data-how="${esc(s.student)}|${esc(l.checker)}|${esc(q.id)}">${explained[`${s.student}|${l.checker}|${q.id}`] ? 'hide' : 'how?'}</button>`) : ''}</td>
         <td class="tries">${tries.map((t, k) => `<span class="${t.is_right ? 'r' : ''}"><i>${k + 1}</i>${cellsOf(t.answer)}</span>`).join('') || '<span class="muted" style="background:none;color:#8A8A85">not tried</span>'}</td>
-        <td class="pts">${tries.length ? scoreQuestion(tries) : 0}</td></tr>`;
+        <td class="pts">${tries.length ? scoreQuestion(tries) : 0}</td></tr>${howRow(`${s.student}|${l.checker}|${q.id}`)}`;
     }).join('');
     const memo = m && m.text
       ? `<details class="m" ${m.submitted_at ? '' : 'open'}><summary><b>Memo</b> · ${m.submitted_at ? 'submitted ' + new Date(m.submitted_at).toLocaleString() : 'withdrawn for editing'}</summary><div class="memo">${esc(m.text)}</div></details>`
@@ -278,6 +297,8 @@
   $('students').addEventListener('click', (e) => {
     const pk = e.target.closest('[data-pick]');
     if (pk) { picked[pk.dataset.who] = pk.dataset.pick; render(); return; }
+    const hw = e.target.closest('[data-how]');
+    if (hw) { explain(hw.dataset.how); return; }
     if (e.target.closest('tr.detail')) return;
     const go = e.target.closest('[data-go]');
     if (go) { const s = go.dataset.go; setLesson(s, document.querySelector(`select[data-move="${CSS.escape(s)}"]`).value || null); return; }
