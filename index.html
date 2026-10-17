@@ -226,7 +226,7 @@
     $('all-lesson').innerHTML = options(data.state.self_paced ? '__self' : data.state.lesson, false, true);
     $('mode-note').textContent = data.state.self_paced
       ? 'Self-paced: each student moves to the next lesson when they finish the one they are on (new students start at lesson 1). Students you moved yourself stay where you put them.'
-      : 'With class: you open each lesson yourself. Students you moved yourself keep their own lesson until you set them back to "follow the course".';
+      : 'With class: you open each lesson yourself. Nobody goes backwards: a student ahead of the lesson you open keeps their place. Students you moved yourself keep their lesson until you set them back to "follow the course".';
     $('all-since').textContent = data.state.self_paced ? '' : `open since ${new Date(data.state.since).toLocaleDateString()} (${ago(data.state.since)})`;
     $('count').textContent = `${data.students.length} student${data.students.length === 1 ? '' : 's'} set up. Click a student for their answers and memos.`;
     $('students').innerHTML = `<thead><tr><th>Student</th><th>Set up</th><th>Lesson now</th><th>Lesson open for</th><th>Move to</th><th>Scores and memos</th><th>Last seen</th></tr></thead><tbody>${
@@ -239,7 +239,7 @@
         return `<tr class="st ${openStudent === s.student ? 'open' : ''}" data-s="${esc(s.student)}">
           <td><b>${esc(s.name || s.student)}</b><div class="muted"><a href="${esc(s.site)}" target="_blank" onclick="event.stopPropagation()">${esc(s.student)}</a></div></td>
           <td>${s.setup_at ? new Date(s.setup_at).toLocaleDateString() : '–'}</td>
-          <td>${n ?? '–'}${s.lesson ? ` <span class="muted">(${s.lesson_auto ? 'moved automatically' : 'moved'})</span>` : ''}${(s.self_paced ?? (s.lesson && !s.lesson_auto ? false : data.state.self_paced)) ? '<div class="muted">self-paced</div>' : ''}</td>
+          <td>${n ?? '–'}${s.lesson ? ` <span class="muted">(${s.lesson_auto ? 'set automatically' : 'moved'})</span>` : ''}${(s.self_paced ?? (s.lesson && !s.lesson_auto ? false : data.state.self_paced)) ? '<div class="muted">self-paced</div>' : ''}</td>
           <td>${ago(sinceOf(s))}</td>
           <td class="move"><div class="row"><select data-move="${esc(s.student)}">${options(s.self_paced === true ? '__self' : (s.lesson || ''), true, true)}</select><button data-go="${esc(s.student)}">Move</button></div></td>
           <td>${chips || '<span class="muted">–</span>'}</td>
