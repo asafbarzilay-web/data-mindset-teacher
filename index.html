@@ -100,7 +100,7 @@
   <section class="card">
     <h2>Students</h2>
     <p class="muted" id="count"></p>
-    <p class="muted"><span class="chip done">Submitted ✓</span> memo in, every answer right · <span class="chip wip">In progress</span> working on it ·
+    <p class="muted"><span class="chip done">Submitted ✓</span> memo in, every answer right · <span class="chip wip">In guided walkthrough</span> panels built, no answers yet · <span class="chip wip">In progress</span> answering ·
       <span class="chip late">Not finished</span> moved past it without submitting · <span class="chip none">Not started</span></p>
     <div class="scroll"><table id="students"></table></div>
   </section>
@@ -145,7 +145,23 @@
     const m = memoOf(s.student, l);
     if (m && m.submitted_at) return { key: 'done', label: 'Submitted' };
     if (l.n < nOf(lessonOf(s))) return { key: 'late', label: 'Not finished' };
-    return hasWork(s.student, l) ? { key: 'wip', label: 'In progress' } : { key: 'none', label: 'Not started' };
+    if (hasWork(s.student, l)) return { key: 'wip', label: 'In progress' };
+    return hasPanels(s.student, l) ? { key: 'wip', label: 'In guided walkthrough' } : { key: 'none', label: 'Not started' };
+  }
+  // Panels the student's assistant built for this lesson: read from their published dashboard/boards.js
+  // (the course server never sees them). Fetched once per student; a missing site counts as none.
+  const boards = {};
+  const hasPanels = (student, l) => {
+    const t = boards[student];
+    return !!(t && l.unit && new RegExp("['\"]" + l.unit + "['\"]\\s*:\\s*\\[\\s*[^\\s\\]]").test(t));
+  };
+  function loadBoards() {
+    for (const s of data.students) {
+      if (s.site && !(s.student in boards)) {
+        boards[s.student] = null;
+        fetch(s.site + 'dashboard/boards.js?t=' + Date.now()).then(r => r.ok ? r.text() : '').then(t => { boards[s.student] = t; render(); }).catch(() => {});
+      }
+    }
   }
   const lessonOf = s => s.lesson || data.state.lesson;
   const sinceOf = s => s.lesson ? s.lesson_since : data.state.since;
@@ -213,7 +229,7 @@
     if (DEMO) { data = data || demoData(); render(); return; }
     const { data: d, error } = await db.rpc('course_overview');
     if (error) { $('count').innerHTML = `<span class="bad">${esc(error.message)}</span>`; return; }
-    data = d;
+    data = d; loadBoards();
     // A link from a "lesson done" email (?student=…&lesson=…) opens that student on that lesson, once.
     const q = new URLSearchParams(location.search);
     if (q.get('student') && !load.opened) {
