@@ -53,11 +53,12 @@
   .qt .how-btn { display: block; margin-top: 4px; font-size: 12px; font-weight: 400; }
   .qt tr.how td { white-space: normal; background: #F7F7F4; font-size: 13px; color: #33332F; padding-top: 6px; padding-bottom: 8px; }
   .qt tr.how ol { margin: 0; padding-left: 20px; } .qt tr.how li { margin: 2px 0; }
-  .resetbar { margin: 4px 0 12px; font-size: 13.5px; line-height: 1.5; }
-  .resetbar.armed { background: #FEF3F2; border: 1px solid #FECDCA; border-radius: 10px; padding: 10px 12px; }
-  .linkish.danger { color: #B42318; }
-  .resetbar button.linkish.danger { background: none; color: #B42318; padding: 0; margin: 0; text-decoration: underline; font-size: 13.5px; }
-  .resetbar.armed button.danger { background: #B42318; color: #fff; border: none; border-radius: 8px; padding: 6px 12px; cursor: pointer; margin-left: 6px; text-decoration: none; }
+  .lesson-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 0 0 6px; }
+  .lesson-head h3 { margin: 0; }
+  .resetbtn { background: #fff; color: #B42318; border: 1px solid #FECDCA; border-radius: 8px; padding: 3px 12px; font-size: 13px; cursor: pointer; }
+  .resetbtn:hover { background: #FEF3F2; }
+  .resetbar.armed { background: #FEF3F2; border: 1px solid #FECDCA; border-radius: 10px; padding: 10px 12px; margin: 4px 0 12px; font-size: 13.5px; line-height: 1.5; }
+  .resetbar.armed button.danger { background: #B42318; color: #fff; border: none; border-radius: 8px; padding: 6px 12px; cursor: pointer; margin-left: 6px; }
   .qt .gu { white-space: normal; margin-top: 3px; font-size: 12.5px; color: #8A5A00; }
   details.m summary { cursor: pointer; font-size: 13px; color: #4A4A45; margin-top: 8px; }
   .tries { min-width: 260px; }
@@ -263,8 +264,9 @@
     return resetArmed === k
       ? `<div class="resetbar armed"><b>Really reset lesson ${l.n} for ${who}?</b> Their tries, memo${l.checker === 'lesson-04' ? ', task' : ''}, saved answers, panels and views for this lesson are removed, as if they never started it. This can't be undone.
           <button class="danger" data-reset-go="${esc(k)}">Yes, reset</button> <button data-reset-cancel="1">Cancel</button></div>`
-      : `<div class="resetbar"><button class="linkish danger" data-reset="${esc(k)}">Reset lesson ${l.n} for ${who}…</button></div>`;
+      : '';
   };
+  const resetBtn = (s, l) => resetArmed === `${s.student}|${l.checker}` ? '' : `<button class="resetbtn" data-reset="${esc(`${s.student}|${l.checker}`)}">Reset</button>`;
   async function doReset(k) {
     const [student, lesson] = k.split('|'), l = lessons.find(x => x.checker === lesson), name = nameOf(student);
     resetArmed = null;
@@ -302,7 +304,7 @@
       ? `<details class="m" ${m.submitted_at ? '' : 'open'}><summary><b>Memo</b> · ${m.submitted_at ? 'submitted ' + new Date(m.submitted_at).toLocaleString() : 'withdrawn for editing'}</summary><div class="memo">${esc(m.text)}</div></details>`
       : `<div class="muted" style="margin-top:8px"><b>Memo</b> · not sent</div>`;
     return `<tr class="detail"><td colspan="7"><div class="pick">${pick}</div>
-      <div class="lesson-block"><h3>Lesson ${l.n} · ${esc(l.title)} · score ${sc ?? '–'} <span class="chip ${st.key}">${st.label}</span></h3>${resetBar(s, l)}<table class="qt">${rows}</table>${memo}</div></td></tr>`;
+      <div class="lesson-block"><div class="lesson-head"><h3>Lesson ${l.n} · ${esc(l.title)} · score ${sc ?? '–'} <span class="chip ${st.key}">${st.label}</span></h3>${resetBtn(s, l)}</div>${resetBar(s, l)}<table class="qt">${rows}</table>${memo}</div></td></tr>`;
   }
 
   // A line under the heading confirms every change, or shows what went wrong.
