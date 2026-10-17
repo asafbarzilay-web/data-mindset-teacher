@@ -83,16 +83,12 @@
   </header>
 
   <section class="card">
-    <h2>Lesson open for everyone</h2>
+    <h2>Lesson for everyone</h2>
     <div class="row" style="margin-top:8px">
-      <select id="all-lesson"></select><button class="primary" id="open-all">Open for everyone</button>
+      <select id="all-lesson"></select><button class="primary" id="open-all">Apply</button>
       <span class="muted" id="all-since"></span>
     </div>
-    <p class="muted" style="margin-top:8px">Students you moved yourself keep their own lesson until you set them back to "follow the course".</p>
-    <div class="row" style="margin-top:16px;align-items:center">
-      <label style="display:flex;gap:8px;align-items:center;cursor:pointer;white-space:nowrap;flex:none"><input type="checkbox" id="self-paced" style="margin:0"> <b>Self-paced</b></label>
-      <span class="muted" id="self-paced-note"></span>
-    </div>
+    <p class="muted" style="margin-top:8px" id="mode-note"></p>
   </section>
 
   <section class="card">
@@ -154,7 +150,8 @@
     const days = Math.round(m / 1440);
     return m < 60 ? Math.round(m) + ' min' : m < 1440 ? Math.round(m / 60) + ' h' : days + (days === 1 ? ' day' : ' days');
   }
-  const options = (sel, withFollow) => (withFollow ? '<option value="">follow the course</option>' : '') +
+  const options = (sel, withFollow, withSelf) => (withFollow ? '<option value="">follow the course</option>' : '') +
+    (withSelf ? `<option value="__self" ${sel === '__self' ? 'selected' : ''}>Self-paced</option>` : '') +
     lessons.filter(l => l.unit).map(l => `<option value="${l.unit}" ${l.unit === sel ? 'selected' : ''}>${l.n} · ${esc(l.title)}</option>`).join('');
 
   async function loadCourse() {
@@ -226,14 +223,13 @@
   }
 
   function render() {
-    $('all-lesson').innerHTML = options(data.state.lesson, false);
-    $('self-paced').checked = !!data.state.self_paced;
-    $('self-paced-note').textContent = data.state.self_paced
-      ? 'On: when a student finishes the lesson they are on, the next one opens for them (and after setup, lesson 1). You can still set any student to On, Off or Follow the course.'
-      : 'Off: you open lessons yourself. Turn it on and students move on by themselves as they finish.';
-    $('all-since').textContent = `open since ${new Date(data.state.since).toLocaleDateString()} (${ago(data.state.since)})`;
+    $('all-lesson').innerHTML = options(data.state.self_paced ? '__self' : data.state.lesson, false, true);
+    $('mode-note').textContent = data.state.self_paced
+      ? 'Self-paced: each student moves to the next lesson when they finish the one they are on (new students start at lesson 1). Students you moved yourself stay where you put them.'
+      : 'With class: you open each lesson yourself. Students you moved yourself keep their own lesson until you set them back to "follow the course".';
+    $('all-since').textContent = data.state.self_paced ? '' : `open since ${new Date(data.state.since).toLocaleDateString()} (${ago(data.state.since)})`;
     $('count').textContent = `${data.students.length} student${data.students.length === 1 ? '' : 's'} set up. Click a student for their answers and memos.`;
-    $('students').innerHTML = `<thead><tr><th>Student</th><th>Set up</th><th>Lesson now</th><th>Lesson open for</th><th>Move to</th><th>Self-paced</th><th>Scores and memos</th><th>Last seen</th></tr></thead><tbody>${
+    $('students').innerHTML = `<thead><tr><th>Student</th><th>Set up</th><th>Lesson now</th><th>Lesson open for</th><th>Move to</th><th>Scores and memos</th><th>Last seen</th></tr></thead><tbody>${
       data.students.map(s => {
         const cur = lessonOf(s), n = nOf(cur);
         const chips = shownLessons(s).map(l => {
@@ -243,13 +239,9 @@
         return `<tr class="st ${openStudent === s.student ? 'open' : ''}" data-s="${esc(s.student)}">
           <td><b>${esc(s.name || s.student)}</b><div class="muted"><a href="${esc(s.site)}" target="_blank" onclick="event.stopPropagation()">${esc(s.student)}</a></div></td>
           <td>${s.setup_at ? new Date(s.setup_at).toLocaleDateString() : '–'}</td>
-          <td>${n ?? '–'}${s.lesson ? ` <span class="muted">(${s.lesson_auto ? 'moved automatically' : 'moved'})</span>` : ''}</td>
+          <td>${n ?? '–'}${s.lesson ? ` <span class="muted">(${s.lesson_auto ? 'moved automatically' : 'moved'})</span>` : ''}${(s.self_paced ?? (s.lesson && !s.lesson_auto ? false : data.state.self_paced)) ? '<div class="muted">self-paced</div>' : ''}</td>
           <td>${ago(sinceOf(s))}</td>
-          <td class="move"><div class="row"><select data-move="${esc(s.student)}">${options(s.lesson || '', true)}</select><button data-go="${esc(s.student)}">Move</button></div></td>
-          <td class="move"><select data-sp="${esc(s.student)}" title="Self-paced for this student">
-            <option value="" ${s.self_paced == null ? 'selected' : ''}>Follow the course</option>
-            <option value="on" ${s.self_paced === true ? 'selected' : ''}>On</option>
-            <option value="off" ${s.self_paced === false ? 'selected' : ''}>Off</option></select></td>
+          <td class="move"><div class="row"><select data-move="${esc(s.student)}">${options(s.self_paced === true ? '__self' : (s.lesson || ''), true, true)}</select><button data-go="${esc(s.student)}">Move</button></div></td>
           <td>${chips || '<span class="muted">–</span>'}</td>
           <td>${ago(s.last_seen)}</td></tr>${openStudent === s.student ? detail(s) : ''}`;
       }).join('')}</tbody>`;
@@ -261,7 +253,7 @@
     ...data.memos.filter(m => m.student === student && m.lesson === l.checker && m.submitted_at).map(m => +new Date(m.submitted_at)));
   function detail(s) {
     const ls = shownLessons(s);
-    if (!ls.length) return `<tr class="detail"><td colspan="8"><span class="muted">No graded lessons yet.</span></td></tr>`;
+    if (!ls.length) return `<tr class="detail"><td colspan="7"><span class="muted">No graded lessons yet.</span></td></tr>`;
     const latest = ls.reduce((a, b) => lastActivity(s.student, b) > lastActivity(s.student, a) ? b : a, ls[ls.length - 1]);
     const l = ls.find(x => x.checker === picked[s.student]) || latest;
     const qs = questions[l.checker] || [], m = memoOf(s.student, l), sc = lessonScore(s.student, l);
@@ -281,7 +273,7 @@
     const memo = m && m.text
       ? `<details class="m" ${m.submitted_at ? '' : 'open'}><summary><b>Memo</b> · ${m.submitted_at ? 'submitted ' + new Date(m.submitted_at).toLocaleString() : 'withdrawn for editing'}</summary><div class="memo">${esc(m.text)}</div></details>`
       : `<div class="muted" style="margin-top:8px"><b>Memo</b> · not sent</div>`;
-    return `<tr class="detail"><td colspan="8"><div class="pick">${pick}</div>
+    return `<tr class="detail"><td colspan="7"><div class="pick">${pick}</div>
       <div class="lesson-block"><h3>Lesson ${l.n} · ${esc(l.title)} · score ${sc ?? '–'} <span class="chip ${st.key}">${st.label}</span></h3><table class="qt">${rows}</table>${memo}</div></td></tr>`;
   }
 
@@ -305,12 +297,12 @@
     await load(); note(said);
   }
   async function setLesson(student, lesson) {
-    const said = student === null ? `Opened ${titleOf(lesson)} for everyone.`
+    const said = student === null ? `Opened ${titleOf(lesson)} for everyone (with class: self-paced is off).`
       : lesson ? `Moved ${nameOf(student)} to ${titleOf(lesson)}. Their site follows within seconds (they may need to reload).`
       : `${nameOf(student)} now follows the course again.`;
     if (DEMO) {
-      if (student === null) Object.assign(data.state, { lesson, since: new Date().toISOString() });
-      else Object.assign(data.students.find(s => s.student === student), { lesson, lesson_since: lesson ? new Date().toISOString() : null });
+      if (student === null) { Object.assign(data.state, { lesson, since: new Date().toISOString(), self_paced: false }); data.students.filter(s => s.lesson_auto).forEach(s => Object.assign(s, { lesson: null, lesson_auto: false })); }
+      else Object.assign(data.students.find(s => s.student === student), { lesson, lesson_since: lesson ? new Date().toISOString() : null, lesson_auto: false, self_paced: lesson ? false : null });
       render(); return note(said + ' (demo only)');
     }
     const { error } = await db.rpc('course_set_lesson', { p_student: student, p_lesson: lesson });
@@ -325,17 +317,14 @@
     if (hw) { explain(hw.dataset.how); return; }
     if (e.target.closest('tr.detail')) return;
     const go = e.target.closest('[data-go]');
-    if (go) { const s = go.dataset.go; setLesson(s, document.querySelector(`select[data-move="${CSS.escape(s)}"]`).value || null); return; }
+    if (go) { const s = go.dataset.go; apply(s, document.querySelector(`select[data-move="${CSS.escape(s)}"]`).value); return; }
     if (e.target.closest('td.move')) return;   // the dropdown and button don't open the row
     const tr = e.target.closest('tr.st'); if (!tr) return;
     openStudent = openStudent === tr.dataset.s ? null : tr.dataset.s; render();
   });
-  $('open-all').addEventListener('click', () => setLesson(null, $('all-lesson').value));
-  $('self-paced').addEventListener('change', (e) => setSelfPaced(null, e.target.checked));
-  $('students').addEventListener('change', (e) => {
-    const sel = e.target.closest('select[data-sp]'); if (!sel) return;
-    setSelfPaced(sel.dataset.sp, sel.value === 'on' ? true : sel.value === 'off' ? false : null);
-  });
+  // One dropdown for both: a lesson (with class: you decide) or Self-paced (they move on as they finish).
+  const apply = (student, value) => value === '__self' ? setSelfPaced(student, true) : setLesson(student, value || null);
+  $('open-all').addEventListener('click', () => apply(null, $('all-lesson').value));
   $('refresh').addEventListener('click', load);
   $('login-form').addEventListener('submit', async (e) => {
     e.preventDefault();
