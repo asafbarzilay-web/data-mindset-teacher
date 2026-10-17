@@ -269,7 +269,7 @@
       }).join('')}</tbody>`;
   }
 
-  // The open row shows one lesson: the one the student worked on last, unless the teacher picked another.
+  // The open row shows one lesson: the one the student is on now, unless the teacher picked another.
   const picked = {};
   const lastActivity = (student, l) => Math.max(0, ...data.attempts.filter(a => a.student === student && a.lesson === l.checker).map(a => +new Date(a.at)),
     ...data.memos.filter(m => m.student === student && m.lesson === l.checker && m.submitted_at).map(m => +new Date(m.submitted_at)));
@@ -301,7 +301,8 @@
     const ls = shownLessons(s);
     if (!ls.length) return `<tr class="detail"><td colspan="7"><span class="muted">No graded lessons yet.</span></td></tr>`;
     const latest = ls.reduce((a, b) => lastActivity(s.student, b) > lastActivity(s.student, a) ? b : a, ls[ls.length - 1]);
-    const l = ls.find(x => x.checker === picked[s.student]) || latest;
+    const now = ls.find(x => x.unit === lessonOf(s));   // the lesson they are on, else the one with the latest activity
+    const l = ls.find(x => x.checker === picked[s.student]) || now || latest;
     const qs = questions[l.checker] || [], m = memoOf(s.student, l), sc = lessonScore(s.student, l);
     const pick = ls.map(x => `<button data-pick="${esc(x.checker)}" data-who="${esc(s.student)}" class="${x === l ? 'on' : ''}">L${x.n} · ${status(s, x).label}</button>`).join('');
     const st = status(s, l);
